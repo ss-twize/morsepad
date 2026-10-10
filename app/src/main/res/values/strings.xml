@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MorsePad</string>
+
+    <string name="list_search">Поиск по тексту</string>
+    <string name="list_new_note">Новая заметка</string>
+    <string name="list_empty">Заметок пока нет</string>
+    <string name="list_nothing_found">Ничего не найдено</string>
+    <string name="note_untitled">Без названия</string>
+    <string name="delete_title">Удалить заметку?</string>
+    <string name="delete_confirm">Удалить</string>
+    <string name="cancel">Отмена</string>
+    <string name="back">Назад</string>
+
+    <string name="editor_placeholder">Наберите текст аккордами</string>
+    <string name="editor_done">Готово</string>
+    <string name="editor_prefix_pending">Префикс: второй аккорд</string>
+    <string name="editor_prefix_cancelled">Префикс отменён</string>
+    <string name="key_space">пробел</string>
+    <string name="save_saved">Сохранено</string>
+    <string name="save_saving">Сохранение…</string>
+    <string name="save_failed">Ошибка сохранения</string>
+
+    <string name="settings_title">Настройки</string>
+    <string name="settings_input">ВВОД</string>
+    <string name="settings_vibration">Вибрация при вводе</string>
+    <string name="settings_chord_hint">Подсказка набираемого аккорда</string>
+    <string name="settings_key_labels">Подписи клавиш K1–K5</string>
+    <string name="settings_text_size">Размер текста</string>
+    <string name="settings_appearance">ОФОРМЛЕНИЕ</string>
+    <string name="settings_theme_dark">Тёмная</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_encoding">КОДИРОВКА</string>
+    <string name="settings_table_version">Таблица</string>
+    <string name="settings_table_note">● — нажатая клавиша, порядок K1…K5 слева направо. Ф и Ъ: префикс ●●●●●, затем второй аккорд. Пробел, запятая и точка — отдельные клавиши.</string>
+    <string name="settings_diagnostics">ДИАГНОСТИКА ЗАДЕРЖЕК</string>
+    <string name="settings_latency_intro">Время от события касания (отпускание последнего пальца / клавиши) до отрисовки текста, мс. Собирается во время обычного набора.</string>
+    <string name="settings_latency_refresh">Обновить</string>
+    <string name="settings_latency_reset">Сбросить</string>
+    <string name="settings_latency_export">Сохранить CSV</string>
+</resources>

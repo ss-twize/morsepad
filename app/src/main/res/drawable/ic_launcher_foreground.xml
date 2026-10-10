@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Five chord keys; K1 and K3 pressed (10100 = Л). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFF2F2F2" android:pathData="M25,42h10v24h-10z" />
+    <path android:fillColor="#FF3D3D3D" android:pathData="M37,42h10v24h-10z" />
+    <path android:fillColor="#FFF2F2F2" android:pathData="M49,42h10v24h-10z" />
+    <path android:fillColor="#FF3D3D3D" android:pathData="M61,42h10v24h-10z" />
+    <path android:fillColor="#FF3D3D3D" android:pathData="M73,42h10v24h-10z" />
+</vector>
