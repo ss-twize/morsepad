@@ -1,5 +1,6 @@
 package com.morsepad.app.ui.notes
 
+import android.os.Build
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,18 +31,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,6 +102,24 @@ fun NoteListScreen(
     val notes by viewModel.visibleNotes.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<Note?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val copiedMessage = stringResource(R.string.list_copied)
+    val copyFailedMessage = stringResource(R.string.list_copy_failed)
+    val copy: (Note) -> Unit = { note ->
+        val copied = runCatching { clipboard.setText(AnnotatedString(note.content)) }.isSuccess
+        // Android 13+ confirms clipboard writes itself; older versions get our own notice.
+        val notice = when {
+            !copied -> copyFailedMessage // e.g. a clip too large for the system to accept
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> copiedMessage
+            else -> null
+        }
+        if (notice != null) {
+            snackbar.currentSnackbarData?.dismiss() // repeated taps replace the notice instead of queueing
+            scope.launch { snackbar.showSnackbar(notice, duration = SnackbarDuration.Short) }
+        }
+    }
 
     Box(
         Modifier
@@ -132,7 +158,7 @@ fun NoteListScreen(
                     contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
                     items(list, key = { it.id }) { note ->
-                        NoteRow(note, onOpen = { onOpen(note.id) }, onDelete = { pendingDelete = note })
+                        NoteRow(note, onOpen = { onOpen(note.id) }, onCopy = { copy(note) }, onDelete = { pendingDelete = note })
                         HorizontalDivider(color = colors.keyBorder.copy(alpha = 0.5f))
                     }
                 }
@@ -147,6 +173,7 @@ fun NoteListScreen(
             contentColor = colors.labelActive,
             modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp).testTag(TAG_NEW_NOTE),
         )
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
     }
 
     pendingDelete?.let { note ->
@@ -171,7 +198,7 @@ fun NoteListScreen(
 }
 
 @Composable
-private fun NoteRow(note: Note, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun NoteRow(note: Note, onOpen: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit) {
     val colors = LocalPadColors.current
     val context = LocalContext.current
     val updated = remember(note.updatedAt) {
@@ -202,6 +229,9 @@ private fun NoteRow(note: Note, onOpen: () -> Unit, onDelete: () -> Unit) {
             }
             Text(updated, color = colors.textSecondary, style = MaterialTheme.typography.labelSmall)
         }
+        IconButton(onClick = onCopy, modifier = Modifier.testTag("$TAG_COPY_PREFIX${note.id}")) {
+            Icon(painterResource(R.drawable.ic_copy), contentDescription = stringResource(R.string.list_copy), tint = colors.textSecondary)
+        }
         IconButton(onClick = onDelete, modifier = Modifier.testTag("$TAG_DELETE_PREFIX${note.id}")) {
             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_title), tint = colors.textSecondary)
         }
@@ -219,4 +249,5 @@ const val TAG_NEW_NOTE = "new_note"
 const val TAG_SEARCH = "search"
 const val TAG_NOTE_LIST = "note_list"
 const val TAG_DELETE_PREFIX = "delete_"
+const val TAG_COPY_PREFIX = "copy_"
 const val TAG_CONFIRM_DELETE = "confirm_delete"

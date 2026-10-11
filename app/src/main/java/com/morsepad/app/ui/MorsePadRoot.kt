@@ -137,6 +137,7 @@ fun MorsePadRoot(container: AppContainer, restoreLastNote: Boolean) {
                     viewModel = vm,
                     latencyTracker = container.latencyTracker,
                     touchSignals = container.touchSignals,
+                    haptics = container.haptics,
                     onExit = {
                         if (nav.currentDestination?.route == Routes.EDITOR &&
                             !nav.popBackStack(Routes.NOTES, inclusive = false)
@@ -148,7 +149,7 @@ fun MorsePadRoot(container: AppContainer, restoreLastNote: Boolean) {
             }
             composable(Routes.SETTINGS) {
                 val vm: SettingsViewModel = viewModel(
-                    factory = viewModelFactory { initializer { SettingsViewModel(container.settingsRepository, container.latencyTracker) } },
+                    factory = viewModelFactory { initializer { SettingsViewModel(container.settingsRepository, container.latencyTracker, container.haptics) } },
                 )
                 SettingsScreen(vm, onBack = { nav.popBackStack() })
             }

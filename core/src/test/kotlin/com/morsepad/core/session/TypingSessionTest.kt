@@ -13,20 +13,15 @@ import org.junit.Test
 
 class TypingSessionTest {
 
-    private val codec: ChordCodec = TableChordCodec(ChordTables.V1_0)
+    private val codec: ChordCodec = TableChordCodec(ChordTables.V1_1)
     private val editor = TextEditor()
     private val session = TypingSession(codec, editor)
 
     private fun chord(code: String) = session.onChord(ChordMask.parse(code))
 
-    /** Types [text] the way a user would: chords for letters, special keys for the rest. */
+    /** Types [text] the way a user would: every character, including space and punctuation, by chords. */
     private fun typeLikeAUser(text: String) = text.forEach { char ->
-        when (char) {
-            ' ' -> session.onSpecialKey(SpecialKey.SPACE)
-            ',' -> session.onSpecialKey(SpecialKey.COMMA)
-            '.' -> session.onSpecialKey(SpecialKey.PERIOD)
-            else -> codec.encode(char).also { check(it.isNotEmpty()) { "untypeable '$char'" } }.forEach { session.onChord(it) }
-        }
+        codec.encode(char).also { check(it.isNotEmpty()) { "untypeable '$char'" } }.forEach { session.onChord(it) }
     }
 
     @Test
@@ -59,27 +54,40 @@ class TypingSessionTest {
     }
 
     @Test
-    fun `special key during prefix cancels it and still performs the action`() {
-        for ((key, expected) in listOf(SpecialKey.SPACE to " ", SpecialKey.COMMA to ",", SpecialKey.PERIOD to ".")) {
-            val local = TextEditor()
-            val localSession = TypingSession(codec, local)
-            localSession.onChord(ChordMask.parse("11111"))
+    fun `space comma and period are typed with prefix chords`() {
+        typeLikeAUser("да")
+        chord("11111")
+        val space = chord("00100")
+        typeLikeAUser("нет")
+        chord("11111")
+        chord("00010") // comma
+        typeLikeAUser("ок")
+        chord("11111")
+        chord("00001") // period
 
-            val update = localSession.onSpecialKey(key)
-
-            assertTrue("$key must report the cancel", update.prefixCancelled)
-            assertFalse(localSession.isPrefixPending)
-            assertEquals(expected, local.text)
-        }
+        assertEquals(' ', space.committedChar)
+        assertTrue(space.textChanged)
+        assertEquals("Да нет, ок. ", editor.text)
     }
 
     @Test
     fun `after a cancelled prefix the next chord is a basic letter`() {
         chord("11111")
-        session.onSpecialKey(SpecialKey.SPACE)
+        session.onSpecialKey(SpecialKey.BACKSPACE)
         chord("01000")
 
-        assertEquals(" А", editor.text)
+        assertEquals("А", editor.text)
+    }
+
+    @Test
+    fun `swallowed space is still a recognised chord`() {
+        typeLikeAUser("да,")
+        chord("11111")
+        val update = chord("00100")
+
+        assertEquals(' ', update.committedChar)
+        assertFalse(update.textChanged)
+        assertEquals("Да, ", editor.text)
     }
 
     @Test
@@ -108,7 +116,7 @@ class TypingSessionTest {
     @Test
     fun `invalid continuation cancels the prefix without text`() {
         chord("11111")
-        val update = chord("00100")
+        val update = chord("00110") // not an extension
 
         assertTrue(update.prefixCancelled)
         assertFalse(update.textChanged)

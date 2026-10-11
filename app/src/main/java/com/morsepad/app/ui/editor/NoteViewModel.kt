@@ -11,7 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morsepad.app.data.WriteBarrier
 import com.morsepad.app.diagnostics.LatencyTracker
-import com.morsepad.core.codec.ChordTable
+import com.morsepad.core.codec.ChordCodec
 import com.morsepad.core.codec.ChordTables
 import com.morsepad.core.codec.TableChordCodec
 import com.morsepad.core.editor.TextEditor
@@ -74,8 +74,8 @@ class NoteViewModel(
     var prefixCancelCount by mutableIntStateOf(0)
         private set
 
-    /** Key index → letter it types after the prefix (single-key extensions only). */
-    var extensionHints by mutableStateOf<Map<Int, Char>>(emptyMap())
+    /** Codec of the active encoding table (drives key hints and the chord hint line). */
+    var codec by mutableStateOf<ChordCodec>(TableChordCodec(ChordTables.default))
         private set
 
     private val _saveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
@@ -93,8 +93,9 @@ class NoteViewModel(
         val note = resolveNoteId()?.let { notes.getNote(it) }
 
         editor.replaceAll(note?.content.orEmpty())
-        session = TypingSession(TableChordCodec(table), editor)
-        extensionHints = singleKeyExtensions(table)
+        val tableCodec = TableChordCodec(table)
+        codec = tableCodec
+        session = TypingSession(tableCodec, editor)
 
         val saver = NoteAutosaver(appScope, notes, initialNoteId = note?.id)
         autosaver = saver
@@ -218,10 +219,5 @@ class NoteViewModel(
         const val NEW_NOTE_ID = -1L
         internal const val KEY_STARTED = "editorStarted"
         private const val TAG = "MorsePad"
-
-        fun singleKeyExtensions(table: ChordTable): Map<Int, Char> =
-            table.extensions
-                .filterKeys { it.keyCount == 1 }
-                .mapKeys { (mask, _) -> (0 until 5).first { mask.isPressed(it) } }
     }
 }

@@ -88,7 +88,7 @@ class InputPipelineLatencyTest {
         val elapsed = SystemClock.uptimeMillis() - started
         SystemClock.sleep(1_000) // let the last frames, vsync callbacks and the debounced save run
 
-        val expected = TypingSession(TableChordCodec(ChordTables.V1_0), TextEditor()).run {
+        val expected = TypingSession(TableChordCodec(ChordTables.default), TextEditor()).run {
             masks.forEach(::onChord)
             editor.text
         }

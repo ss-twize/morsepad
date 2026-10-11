@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -49,10 +50,14 @@ import androidx.lifecycle.viewModelScope
 import com.morsepad.app.R
 import com.morsepad.app.diagnostics.LatencyReport
 import com.morsepad.app.diagnostics.LatencyTracker
+import com.morsepad.app.input.Haptics
+import com.morsepad.app.ui.editor.keyGlyphText
 import com.morsepad.app.ui.theme.LocalPadColors
 import com.morsepad.core.codec.ChordMask
 import com.morsepad.core.codec.ChordTable
 import com.morsepad.core.codec.ChordTables
+import com.morsepad.core.codec.TableChordCodec
+import com.morsepad.core.layout.KeyLayout
 import com.morsepad.core.settings.AppSettings
 import com.morsepad.core.settings.SettingsRepository
 import com.morsepad.core.settings.ThemeMode
@@ -64,11 +69,18 @@ import kotlinx.coroutines.withContext
 class SettingsViewModel(
     private val repository: SettingsRepository,
     val latencyTracker: LatencyTracker,
+    private val haptics: Haptics,
 ) : ViewModel() {
     val settings: StateFlow<AppSettings> = repository.settings
 
     fun update(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch { repository.update(transform) }
+    }
+
+    fun setVibration(enabled: Boolean) {
+        haptics.enabled = enabled
+        if (enabled) haptics.preview() // let the user feel what they just switched on
+        update { it.copy(vibrationEnabled = enabled) }
     }
 
     suspend fun exportLatency(context: Context): String = withContext(Dispatchers.IO) {
@@ -101,7 +113,10 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Section(stringResource(R.string.settings_input))
-            ToggleRow(stringResource(R.string.settings_vibration), settings.vibrationEnabled) { on -> viewModel.update { it.copy(vibrationEnabled = on) } }
+            ToggleRow(stringResource(R.string.settings_vibration), settings.vibrationEnabled, TAG_VIBRATION_SWITCH, viewModel::setVibration)
+            ToggleRow(stringResource(R.string.settings_letter_hints), settings.showLetterHints, TAG_LETTER_HINTS_SWITCH) { on ->
+                viewModel.update { it.copy(showLetterHints = on) }
+            }
             ToggleRow(stringResource(R.string.settings_chord_hint), settings.showChordHint) { on -> viewModel.update { it.copy(showChordHint = on) } }
             ToggleRow(stringResource(R.string.settings_key_labels), settings.showKeyLabels) { on -> viewModel.update { it.copy(showKeyLabels = on) } }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -110,6 +125,20 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 Text("${settings.textSizeSp} sp", color = colors.text, modifier = Modifier.padding(horizontal = 12.dp))
                 OutlinedButton(onClick = { viewModel.update { it.copy(textSizeSp = (it.textSizeSp + 2).coerceIn(AppSettings.TEXT_SIZE_RANGE)) } }) { Text("+") }
             }
+
+            Section(stringResource(R.string.settings_key_widths))
+            Text(stringResource(R.string.settings_key_widths_hint), color = colors.textSecondary, fontSize = 13.sp)
+            KeyWidthEditor(
+                layout = settings.keyLayout,
+                codec = remember(settings.codeTableVersion) {
+                    TableChordCodec(ChordTables.byVersion(settings.codeTableVersion) ?: ChordTables.default)
+                },
+                onChange = { layout -> viewModel.update { it.copy(keyLayout = layout) } },
+            )
+            OutlinedButton(
+                onClick = { viewModel.update { it.copy(keyLayout = KeyLayout.EQUAL) } },
+                enabled = settings.keyLayout != KeyLayout.EQUAL,
+            ) { Text(stringResource(R.string.settings_key_widths_reset)) }
 
             Section(stringResource(R.string.settings_appearance))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -157,12 +186,15 @@ private fun Section(title: String) {
 }
 
 @Composable
-private fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun ToggleRow(title: String, checked: Boolean, tag: String = "", onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = LocalPadColors.current.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag(tag))
     }
 }
+
+const val TAG_VIBRATION_SWITCH = "vibration_switch"
+const val TAG_LETTER_HINTS_SWITCH = "letter_hints_switch"
 
 /** Static reference card of the active table: letter, dots (● pressed) and the code. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -170,8 +202,10 @@ private fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Un
 private fun CodeTableReference(table: ChordTable) {
     val colors = LocalPadColors.current
     val cells = remember(table) {
-        table.letters.entries.sortedBy { it.value }.map { (mask, letter) -> Triple(letter.toString(), mask, null as ChordMask?) } +
-            table.extensions.entries.sortedBy { it.value }.map { (mask, letter) -> Triple(letter.toString(), table.prefix, mask) }
+        table.letters.entries.sortedBy { it.value }.map { (mask, letter) -> Triple(keyGlyphText(letter), mask, null as ChordMask?) } +
+            // Letters (Ф, Ъ) first, then space, comma, period.
+            table.extensions.entries.sortedWith(compareBy({ !it.value.isLetter() }, { it.value }))
+                .map { (mask, char) -> Triple(keyGlyphText(char), table.prefix, mask) }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         cells.forEach { (letter, first, second) ->

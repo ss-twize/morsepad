@@ -11,7 +11,7 @@ data class ChordTableDefinition(
     val prefix: String,
     /** Single-chord letters: character to five-bit code. */
     val letters: List<Pair<Char, String>>,
-    /** Letters typed as `prefix → code`. */
+    /** Letters, or one of [ChordTableValidator.SYMBOLS], typed as `prefix → code`. */
     val extensions: List<Pair<Char, String>>,
 )
 
@@ -25,6 +25,7 @@ sealed interface TableProblem {
     data class PrefixConflict(val char: Char) : TableProblem
     data class ForbiddenCharacter(val char: Char) : TableProblem
     data class NotUppercaseLetter(val char: Char) : TableProblem
+    data class UnsupportedSymbol(val char: Char) : TableProblem
 }
 
 class InvalidChordTableException(message: String) : IllegalArgumentException(message)
@@ -33,6 +34,9 @@ class InvalidChordTableException(message: String) : IllegalArgumentException(mes
 object ChordTableValidator {
 
     private val forbidden = setOf('Ё', 'ё')
+
+    /** Non-letter characters a prefix sequence may type. */
+    val SYMBOLS = setOf(' ', ',', '.')
 
     fun validate(definition: ChordTableDefinition): List<TableProblem> {
         val problems = mutableListOf<TableProblem>()
@@ -43,10 +47,15 @@ object ChordTableValidator {
         }
         if (prefix != null && prefix.isEmpty) problems += TableProblem.EmptyPrefix
 
-        fun parseGroup(entries: List<Pair<Char, String>>): List<Pair<Char, ChordMask>> =
+        fun parseGroup(entries: List<Pair<Char, String>>, allowSymbols: Boolean): List<Pair<Char, ChordMask>> =
             entries.mapNotNull { (char, code) ->
-                if (char in forbidden) problems += TableProblem.ForbiddenCharacter(char)
-                else if (!char.isLetter() || !char.isUpperCase()) problems += TableProblem.NotUppercaseLetter(char)
+                when {
+                    char in forbidden -> problems += TableProblem.ForbiddenCharacter(char)
+                    char.isLetter() && char.isUpperCase() -> Unit
+                    allowSymbols && char in SYMBOLS -> Unit
+                    allowSymbols && !char.isLetter() -> problems += TableProblem.UnsupportedSymbol(char)
+                    else -> problems += TableProblem.NotUppercaseLetter(char)
+                }
 
                 if (!ChordMask.isWellFormed(code)) {
                     problems += TableProblem.MalformedCode(char, code)
@@ -57,8 +66,8 @@ object ChordTableValidator {
                 char to mask
             }
 
-        val letters = parseGroup(definition.letters)
-        val extensions = parseGroup(definition.extensions)
+        val letters = parseGroup(definition.letters, allowSymbols = false)
+        val extensions = parseGroup(definition.extensions, allowSymbols = true)
 
         // Letters share the code space with the prefix; extensions live in their own
         // space (they are only read after the prefix), so only letters can collide with it.
@@ -110,11 +119,11 @@ class ChordTable private constructor(
 
 /** Registry of the tables shipped with the app, addressable by the version stored in settings. */
 object ChordTables {
-    val V1_0: ChordTable = ChordTable.from(ChordTableV1.definition)
+    val V1_1: ChordTable = ChordTable.from(ChordTableV11.definition)
 
-    val all: List<ChordTable> = listOf(V1_0)
+    val all: List<ChordTable> = listOf(V1_1)
 
-    val default: ChordTable get() = V1_0
+    val default: ChordTable get() = V1_1
 
     fun byVersion(version: String): ChordTable? = all.firstOrNull { it.version == version }
 }

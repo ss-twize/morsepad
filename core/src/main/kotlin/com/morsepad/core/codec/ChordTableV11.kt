@@ -1,16 +1,20 @@
 package com.morsepad.core.codec
 
 /**
- * Encoding specification v1.0 (section 6 of the requirements), stored as data.
+ * Encoding table v1.1, stored as data.
+ *
+ * Letters, the `11111` prefix, Ф and Ъ are exactly section 6 of the specification (v1.0).
+ * v1.1 adds space, comma and period as prefix sequences on the three single keys that were
+ * still free after the prefix (K3, K4, K5) — they replaced the on-screen space/comma/period
+ * keys (change request 2). Space, the most frequent, sits on the middle finger.
  *
  * This file is configuration, not logic: changing an assignment here never requires
- * touching the input engine or the decoder. Developers must not reassign letters
- * without a new version of the specification (section 6: «Самовольное изменение
- * назначений букв разработчиком запрещено»).
+ * touching the input engine or the decoder. Letters must not be reassigned without a new
+ * version of the specification.
  */
-internal object ChordTableV1 {
+internal object ChordTableV11 {
     val definition = ChordTableDefinition(
-        version = "1.0",
+        version = "1.1",
         prefix = "11111",
         letters = listOf(
             'О' to "00100", 'П' to "01001",
@@ -32,6 +36,9 @@ internal object ChordTableV1 {
         extensions = listOf(
             'Ф' to "01000",
             'Ъ' to "10000",
+            ' ' to "00100",
+            ',' to "00010",
+            '.' to "00001",
         ),
     )
 }

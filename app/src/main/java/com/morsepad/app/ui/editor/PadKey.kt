@@ -6,8 +6,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,25 +21,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.morsepad.app.R
 import com.morsepad.app.ui.theme.LocalPadColors
-import com.morsepad.core.session.SpecialKey
 
 private val KEY_CORNER = 10.dp
 private const val REPEAT_START_DELAY_MILLIS = 450L
 private const val REPEAT_INTERVAL_MILLIS = 60L
 
 /**
- * A single-action key. Each gesture fires at most once: on release inside the key
- * (sliding off cancels), or — for [repeatOnHold] keys like backspace — on touch down and
- * then repeatedly while held. Keys are independent, so they work while fingers rest on
+ * A single-action key (Done, backspace). Each gesture fires at most once: on release inside
+ * the key (sliding off cancels), or — for [repeatOnHold] keys like backspace — on touch down
+ * and then repeatedly while held. Keys are independent, so they work while fingers rest on
  * the chord pad.
  *
  * @param onPress receives the input event time (uptime millis) for latency measurement.
@@ -112,31 +106,4 @@ fun PadKey(
     }
 }
 
-/** Bottom row: comma, a wider space, period and backspace (spec 4.2). */
-@Composable
-fun SpecialKeysRow(
-    onKey: (SpecialKey, eventTimeMillis: Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier) {
-        PadKey(",", { onKey(SpecialKey.COMMA, it) }, Modifier.weight(1.2f).fillMaxHeight().testTag(TAG_KEY_COMMA), fontSize = 32.sp)
-        PadKey(
-            stringResource(R.string.key_space),
-            { onKey(SpecialKey.SPACE, it) },
-            Modifier.weight(4f).fillMaxHeight().testTag(TAG_KEY_SPACE),
-            fontSize = 18.sp,
-        )
-        PadKey(".", { onKey(SpecialKey.PERIOD, it) }, Modifier.weight(1.2f).fillMaxHeight().testTag(TAG_KEY_PERIOD), fontSize = 32.sp)
-        PadKey(
-            "⌫",
-            { onKey(SpecialKey.BACKSPACE, it) },
-            Modifier.weight(1.2f).fillMaxHeight().testTag(TAG_KEY_BACKSPACE),
-            repeatOnHold = true,
-        )
-    }
-}
-
-const val TAG_KEY_COMMA = "key_comma"
-const val TAG_KEY_SPACE = "key_space"
-const val TAG_KEY_PERIOD = "key_period"
 const val TAG_KEY_BACKSPACE = "key_backspace"

@@ -3,6 +3,8 @@ package com.morsepad.app.data.db
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.morsepad.core.codec.ChordTables
+import com.morsepad.core.layout.KeyLayout
 import com.morsepad.core.settings.AppSettings
 import com.morsepad.core.settings.ThemeMode
 
@@ -17,13 +19,19 @@ data class SettingsEntity(
     @ColumnInfo(name = "show_key_labels") val showKeyLabels: Boolean,
     @ColumnInfo(name = "text_size_sp") val textSizeSp: Int,
     @ColumnInfo(name = "open_note_id") val openNoteId: Long?,
+    // Added in schema v2; defaults let the automatic migration fill existing rows.
+    @ColumnInfo(name = "show_letter_hints", defaultValue = "1") val showLetterHints: Boolean = true,
+    @ColumnInfo(name = "key_boundaries", defaultValue = "0.2,0.4,0.6,0.8") val keyBoundaries: String = KeyLayout.EQUAL.serialize(),
 ) {
     fun toDomain() = AppSettings(
-        codeTableVersion = codeTableVersion,
+        // A retired table version (1.0 from app v1.0) reads as the current default.
+        codeTableVersion = ChordTables.byVersion(codeTableVersion)?.version ?: ChordTables.default.version,
         theme = ThemeMode.entries.firstOrNull { it.name == theme } ?: ThemeMode.DARK,
         vibrationEnabled = vibrationEnabled,
         showChordHint = showChordHint,
         showKeyLabels = showKeyLabels,
+        showLetterHints = showLetterHints,
+        keyLayout = KeyLayout.parse(keyBoundaries),
         textSizeSp = textSizeSp,
     )
 
@@ -33,6 +41,8 @@ data class SettingsEntity(
         vibrationEnabled = settings.vibrationEnabled,
         showChordHint = settings.showChordHint,
         showKeyLabels = settings.showKeyLabels,
+        showLetterHints = settings.showLetterHints,
+        keyBoundaries = settings.keyLayout.serialize(),
         textSizeSp = settings.textSizeSp,
     )
 

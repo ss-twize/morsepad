@@ -6,6 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.morsepad.app.data.RoomNoteRepository
 import com.morsepad.app.data.RoomSettingsRepository
 import com.morsepad.app.data.db.MorsePadDatabase
+import com.morsepad.core.codec.ChordTables
+import com.morsepad.core.layout.KeyLayout
 import com.morsepad.core.settings.AppSettings
 import com.morsepad.core.settings.ThemeMode
 import kotlinx.coroutines.flow.first
@@ -82,13 +84,16 @@ class DatabaseTest {
         val repo = RoomSettingsRepository(db.settingsDao(), backgroundScope)
         assertEquals(AppSettings(), repo.load())
 
-        repo.update { it.copy(theme = ThemeMode.LIGHT, vibrationEnabled = false) }
+        val widths = KeyLayout.of(listOf(0.15f, 0.45f, 0.6f, 0.85f))!!
+        repo.update { it.copy(theme = ThemeMode.LIGHT, vibrationEnabled = false, showLetterHints = false, keyLayout = widths) }
         repo.setOpenNoteId(42)
 
         val loaded = repo.load()
         assertEquals(ThemeMode.LIGHT, loaded.theme)
         assertTrue(!loaded.vibrationEnabled)
-        assertEquals("1.0", loaded.codeTableVersion)
+        assertEquals(ChordTables.default.version, loaded.codeTableVersion)
+        assertTrue(!loaded.showLetterHints)
+        assertEquals(widths, loaded.keyLayout)
         assertEquals(42L, repo.openNoteId())
 
         repo.setOpenNoteId(null)

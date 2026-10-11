@@ -1,7 +1,7 @@
 package com.morsepad.core.codec
 
 sealed interface DecodeResult {
-    data class Letter(val char: Char, val extended: Boolean) : DecodeResult
+    data class Symbol(val char: Char, val extended: Boolean) : DecodeResult
 
     /** The service prefix was entered; nothing is shown, the next chord completes the letter. */
     data object PrefixStarted : DecodeResult
@@ -32,7 +32,7 @@ class ChordSequenceDecoder(private val codec: ChordCodec) {
         if (isPrefixPending) {
             isPrefixPending = false
             val letter = codec.decodeExtension(mask) ?: return DecodeResult.PrefixAborted(mask)
-            return DecodeResult.Letter(letter, extended = true)
+            return DecodeResult.Symbol(letter, extended = true)
         }
 
         if (codec.isPrefix(mask)) {
@@ -41,7 +41,7 @@ class ChordSequenceDecoder(private val codec: ChordCodec) {
         }
 
         val letter = codec.decode(mask) ?: return DecodeResult.Nothing
-        return DecodeResult.Letter(letter, extended = false)
+        return DecodeResult.Symbol(letter, extended = false)
     }
 
     /** Drops a pending prefix. Returns true when there was one to drop. */

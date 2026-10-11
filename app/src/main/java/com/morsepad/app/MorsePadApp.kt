@@ -8,6 +8,7 @@ import com.morsepad.app.data.RoomSettingsRepository
 import com.morsepad.app.data.WriteBarrier
 import com.morsepad.app.data.db.MorsePadDatabase
 import com.morsepad.app.diagnostics.LatencyTracker
+import com.morsepad.app.input.Haptics
 import com.morsepad.app.input.TouchSignals
 import com.morsepad.core.notes.NoteRepository
 import com.morsepad.core.settings.SettingsRepository
@@ -49,6 +50,7 @@ class AppContainer(context: Context) {
     val writeBarrier = WriteBarrier()
     val latencyTracker = LatencyTracker()
     val touchSignals = TouchSignals()
+    val haptics = Haptics(context)
 
     /** Note that was being edited when the app went away, if it still exists. */
     suspend fun noteToRestore(): Long? {

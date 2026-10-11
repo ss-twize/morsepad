@@ -1,5 +1,6 @@
 package com.morsepad.app
 
+import android.content.ClipboardManager
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
@@ -18,12 +19,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.morsepad.app.ui.editor.TAG_CHORD_PAD
 import com.morsepad.app.ui.editor.TAG_HINT
 import com.morsepad.app.ui.editor.TAG_KEY_BACKSPACE
-import com.morsepad.app.ui.editor.TAG_KEY_COMMA
 import com.morsepad.app.ui.editor.TAG_KEY_DONE
-import com.morsepad.app.ui.editor.TAG_KEY_PERIOD
-import com.morsepad.app.ui.editor.TAG_KEY_SPACE
-import com.morsepad.app.ui.editor.TAG_KEY_UNDO
 import com.morsepad.app.ui.notes.TAG_CONFIRM_DELETE
+import com.morsepad.app.ui.notes.TAG_COPY_PREFIX
 import com.morsepad.app.ui.notes.TAG_DELETE_PREFIX
 import com.morsepad.app.ui.notes.TAG_NEW_NOTE
 import com.morsepad.app.ui.notes.TAG_SEARCH
@@ -67,19 +65,25 @@ class EditorFlowTest {
         testContainer.noteRepository.observeNotes().first()
     }
 
+    private val space = listOf("11111", "00100")
+    private val comma = listOf("11111", "00010")
+    private val period = listOf("11111", "00001")
+
     @Test
-    fun typesLettersPunctuationAndAutomaticCase() {
+    fun typesLettersAndPunctuationChordsWithAutomaticSpaceAndCase() {
         openNewNote()
-        // "да, ок. но" : Д=10010 А=01000 , О=00100 К=01010 . Н=10000 О=00100
-        listOf("10010", "01000").forEach(compose::chord)
-        compose.tapKey(TAG_KEY_COMMA)
-        compose.tapKey(TAG_KEY_SPACE)
-        listOf("00100", "01010").forEach(compose::chord)
-        compose.tapKey(TAG_KEY_PERIOD)
-        compose.tapKey(TAG_KEY_SPACE)
-        listOf("10000", "00100").forEach(compose::chord)
+        // "да, ок. но": Д=10010 А=01000 , О=00100 К=01010 . Н=10000 О=00100 — no space chords needed
+        (listOf("10010", "01000") + comma + listOf("00100", "01010") + period + listOf("10000", "00100")).forEach(compose::chord)
 
         assertEquals("Да, ок. Но", compose.noteText())
+    }
+
+    @Test
+    fun spaceChordSeparatesWordsAndIsNotDoubledAfterPunctuation() {
+        openNewNote()
+        (listOf("10010", "01000") + space + listOf("10000", "00010", "01100") + period + space).forEach(compose::chord)
+
+        assertEquals("Да нет. ", compose.noteText())
     }
 
     @Test
@@ -95,41 +99,53 @@ class EditorFlowTest {
     }
 
     @Test
-    fun specialKeyDuringPrefixCancelsItVisiblyAndStillActs() {
+    fun backspaceDuringPrefixCancelsItVisibly() {
         openNewNote()
         compose.chord("01000") // А
         compose.chord("11111")
-        compose.tapKey(TAG_KEY_SPACE)
+        compose.tapKey(TAG_KEY_BACKSPACE)
 
         compose.onNodeWithTag(TAG_HINT).assert(hasText("Префикс отменён"))
+        assertEquals("А", compose.noteText())
         compose.chord("01000")
-        assertEquals("А а", compose.noteText())
+        assertEquals("Аа", compose.noteText())
     }
 
     @Test
-    fun backspaceAndUndoTreatExtendedLetterAsOneCharacter() {
+    fun backspaceTreatsExtendedLetterAsOneCharacter() {
         openNewNote()
         listOf("10001", "11111", "01000").forEach(compose::chord) // У Ф
         assertEquals("Уф", compose.noteText())
 
         compose.tapKey(TAG_KEY_BACKSPACE)
         assertEquals("У", compose.noteText())
-
-        compose.tapKey(TAG_KEY_UNDO)
-        assertEquals("Уф", compose.noteText())
     }
 
     @Test
     fun deletingBackToAPeriodRestoresUppercase() {
         openNewNote()
-        compose.chord("10010") // Д
-        compose.tapKey(TAG_KEY_PERIOD)
-        compose.tapKey(TAG_KEY_SPACE)
-        compose.chord("10010") // Д
+        (listOf("10010") + period + listOf("10010")).forEach(compose::chord) // "Д. Д"
         compose.tapKey(TAG_KEY_BACKSPACE)
         compose.chord("01000") // А
 
         assertEquals("Д. А", compose.noteText())
+    }
+
+    @Test
+    fun copyButtonPutsTheNoteOnTheClipboard() {
+        runBlocking { testContainer.noteRepository.create("Купить хлеб, молоко. ") }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Купить хлеб, молоко.", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        val id = storedNotes().single().id
+
+        compose.onNodeWithTag("$TAG_COPY_PREFIX$id").performClick()
+        compose.waitForIdle()
+
+        var copied: String? = null
+        scenario!!.onActivity { activity ->
+            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+            copied = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+        }
+        assertEquals("Купить хлеб, молоко. ", copied)
     }
 
     @Test

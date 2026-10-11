@@ -1,6 +1,7 @@
 package com.morsepad.core.settings
 
 import com.morsepad.core.codec.ChordTables
+import com.morsepad.core.layout.KeyLayout
 import kotlinx.coroutines.flow.StateFlow
 
 enum class ThemeMode { DARK, LIGHT }
@@ -14,6 +15,10 @@ data class AppSettings(
     val showChordHint: Boolean = true,
     /** Show K1…K5 labels on the chord keys. */
     val showKeyLabels: Boolean = true,
+    /** Hint mode: every key shows the character it would add to the chord being pressed. */
+    val showLetterHints: Boolean = true,
+    /** Relative widths of the five chord keys. */
+    val keyLayout: KeyLayout = KeyLayout.EQUAL,
     val textSizeSp: Int = DEFAULT_TEXT_SIZE_SP,
 ) {
     companion object {

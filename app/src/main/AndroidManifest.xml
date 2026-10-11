@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- No INTERNET permission: the app is fully offline by design. -->
+    <!-- Chord feedback; a normal permission, granted at install. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:name=".MorsePadApp"

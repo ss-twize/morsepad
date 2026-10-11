@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -21,6 +24,9 @@ import com.morsepad.app.ui.editor.ChordPadState
 import com.morsepad.app.ui.editor.TAG_CHORD_PAD
 import com.morsepad.app.ui.theme.MorsePadTheme
 import com.morsepad.core.codec.ChordMask
+import com.morsepad.core.codec.ChordTables
+import com.morsepad.core.codec.TableChordCodec
+import com.morsepad.core.layout.KeyLayout
 import com.morsepad.core.settings.ThemeMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -44,6 +50,7 @@ class ChordPadMultitouchTest {
     private val chords = mutableListOf<String>()
     private val signals = TouchSignals()
     private val state = ChordPadState().apply { onChord = { chords += it.mask.toCode() } }
+    private var layout by mutableStateOf(KeyLayout.EQUAL)
 
     @Before
     fun setUp() {
@@ -54,9 +61,11 @@ class ChordPadMultitouchTest {
                     ChordPad(
                         state = state,
                         touchSignals = signals,
-                        showKeyLabels = true,
+                        layout = layout,
+                        codec = TableChordCodec(ChordTables.default),
                         prefixPending = false,
-                        extensionHints = emptyMap(),
+                        showKeyLabels = true,
+                        showLetterHints = true,
                         modifier = Modifier.fillMaxWidth().height(260.dp),
                     )
                 }
@@ -248,6 +257,21 @@ class ChordPadMultitouchTest {
 
         val expected = (0 until 5).flatMap { listOf(ChordMask.ofKey(it).toCode(), ChordMask.ofKey(it).toCode()) }
         assertEquals(expected, chords)
+    }
+
+    @Test
+    fun unevenKeyWidthsMoveTheTouchZones() {
+        layout = KeyLayout.of(listOf(0.1f, 0.5f, 0.6f, 0.9f))!!
+        rule.waitForIdle()
+        // At 0.3 of the width: K3 in an equal layout, K2 in this one; at 0.55 — K3; at 0.05 — K1.
+        listOf(0.3f, 0.55f, 0.05f, 0.95f).forEach { fraction ->
+            pad {
+                down(0, Offset(width * fraction, height / 2f))
+                up(0)
+            }
+        }
+
+        assertEquals(listOf("01000", "00100", "10000", "00001"), chords)
     }
 
     private fun <T> permutations(items: List<T>): List<List<T>> =

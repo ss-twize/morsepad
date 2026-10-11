@@ -13,8 +13,8 @@ android {
         applicationId = "com.morsepad"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -51,6 +51,10 @@ android {
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+    sourceSets {
+        // Exported Room schemas feed MigrationTestHelper.
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
     testOptions {
         unitTests.isReturnDefaultValues = true

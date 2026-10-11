@@ -2,10 +2,12 @@ package com.morsepad.app.ui.editor
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -20,8 +22,9 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
@@ -30,10 +33,14 @@ import androidx.compose.ui.util.fastForEach
 import com.morsepad.app.input.TouchSignals
 import com.morsepad.app.ui.theme.LocalPadColors
 import com.morsepad.app.ui.theme.PadColors
+import com.morsepad.core.codec.ChordCodec
 import com.morsepad.core.codec.ChordMask
+import com.morsepad.core.codec.KeyHint
+import com.morsepad.core.codec.KeyHints
 import com.morsepad.core.input.Chord
 import com.morsepad.core.input.InputEngine
 import com.morsepad.core.input.InputEngineListener
+import com.morsepad.core.layout.KeyLayout
 
 /**
  * Touch-side state of the five-key pad: owns the [InputEngine] and mirrors the pressed
@@ -51,7 +58,7 @@ class ChordPadState : InputEngineListener {
     var pressedBits by mutableIntStateOf(0)
         private set
 
-    /** Union of keys pressed during the current cycle (shown as a hint). */
+    /** Union of keys pressed during the current cycle — the chord that will be committed. */
     var accumulatedBits by mutableIntStateOf(0)
         private set
 
@@ -86,47 +93,88 @@ class ChordPadState : InputEngineListener {
 }
 
 /**
- * Five equal, independent touch zones in one row. Every point of the pad belongs to exactly
- * one key, so no touch inside it is ever "between keys".
+ * Five independent touch zones in one row, sized by [layout]. Every point of the pad belongs to
+ * exactly one key, so no touch inside it is ever "between keys".
  *
- * @param extensionHints key index → letter typed by that key after the prefix (drawn while
- *   the prefix is pending), derived from the active encoding table.
+ * Hint mode ([showLetterHints]): each key shows the character the chord would type if that key
+ * joined it; keys already in the chord turn white. While the prefix is pending the keys always
+ * show what the second chord types (Ъ, Ф, space, comma, period).
  */
 @Composable
 fun ChordPad(
     state: ChordPadState,
     touchSignals: TouchSignals,
-    showKeyLabels: Boolean,
+    layout: KeyLayout,
+    codec: ChordCodec,
     prefixPending: Boolean,
-    extensionHints: Map<Int, Char>,
+    showKeyLabels: Boolean,
+    showLetterHints: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalPadColors.current
     val measurer = rememberTextMeasurer()
-    val labels = remember(measurer) {
-        (1..ChordMask.KEY_COUNT).map { measurer.measure("K$it", TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium)) }
-    }
-    val hints = remember(measurer, extensionHints) {
-        extensionHints.mapValues { (_, letter) -> measurer.measure(letter.toString(), TextStyle(fontSize = 34.sp)) }
+    val labels = rememberKeyLabels(measurer)
+    val glyphs = remember(measurer) { GlyphCache(measurer) }
+    val currentLayout by rememberUpdatedState(layout)
+    val showHints = showLetterHints || prefixPending
+    // Measure every hint glyph up front, off the frame that first shows it.
+    LaunchedEffect(glyphs, codec) {
+        (codec.table.letters.values + codec.table.extensions.values + PREFIX_GLYPH).forEach { glyphs[it] }
     }
 
     Box(
         modifier
             .testTag(TAG_CHORD_PAD)
-            .pointerInput(state, touchSignals) { trackChords(state, touchSignals) }
+            .pointerInput(state, touchSignals) { trackChords(state, touchSignals) { currentLayout } }
             .drawBehind {
-                drawKeys(state.pressedBits, colors, if (showKeyLabels) labels else null, if (prefixPending) hints else null)
+                // Snapshot state read here, in the draw phase: a press repaints, nothing recomposes.
+                val chord = ChordMask(state.accumulatedBits)
+                drawChordKeys(
+                    layout = layout,
+                    heldBits = state.pressedBits,
+                    chordBits = chord.bits,
+                    colors = colors,
+                    labels = if (showKeyLabels) labels else null,
+                    accent = prefixPending,
+                ) { key ->
+                    if (!showHints) return@drawChordKeys null
+                    when (val hint = KeyHints.hintFor(codec, chord, prefixPending, key)) {
+                        is KeyHint.Output -> glyphs[hint.char]
+                        KeyHint.Prefix -> glyphs[PREFIX_GLYPH]
+                        KeyHint.InChord, KeyHint.None -> null
+                    }
+                }
             },
     )
 }
 
 const val TAG_CHORD_PAD = "chord_pad"
 
-/** Maps an x coordinate to K1..K5 (0..4) by equal-width columns. */
-internal fun keyAt(x: Float, width: Int): Int =
-    (x / width * ChordMask.KEY_COUNT).toInt().coerceIn(0, ChordMask.KEY_COUNT - 1)
+/** Shown on the key that would complete the 11111 prefix. */
+private const val PREFIX_GLYPH = '…'
 
-private suspend fun PointerInputScope.trackChords(state: ChordPadState, signals: TouchSignals) {
+/** How a character is written on a key: space gets a visible sign. */
+fun keyGlyphText(char: Char): String = if (char == ' ') "␣" else char.toString()
+
+/** Measures each hint character once and reuses the layout in every frame. */
+internal class GlyphCache(private val measurer: TextMeasurer) {
+    private val letterStyle = TextStyle(fontSize = 34.sp, fontWeight = FontWeight.Medium)
+
+    // Comma and period are tiny glyphs; they need a larger size to read as well as letters.
+    private val punctuationStyle = TextStyle(fontSize = 64.sp, fontWeight = FontWeight.Bold)
+    private val cache = HashMap<Char, TextLayoutResult>()
+
+    operator fun get(char: Char): TextLayoutResult = cache.getOrPut(char) {
+        measurer.measure(keyGlyphText(char), if (char == ',' || char == '.') punctuationStyle else letterStyle)
+    }
+}
+
+@Composable
+internal fun rememberKeyLabels(measurer: TextMeasurer): List<TextLayoutResult> = remember(measurer) {
+    (1..ChordMask.KEY_COUNT).map { measurer.measure("K$it", TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium)) }
+}
+
+private suspend fun PointerInputScope.trackChords(state: ChordPadState, signals: TouchSignals, layout: () -> KeyLayout) {
     awaitPointerEventScope {
         try {
             while (true) {
@@ -135,7 +183,7 @@ private suspend fun PointerInputScope.trackChords(state: ChordPadState, signals:
                     val id = change.id.value
                     when {
                         change.changedToDownIgnoreConsumed() -> {
-                            state.pointerDown(id, keyAt(change.position.x, size.width), change.uptimeMillis)
+                            state.pointerDown(id, layout().keyAt(change.position.x / size.width), change.uptimeMillis)
                             change.consume()
                         }
                         change.changedToUpIgnoreConsumed() -> {
@@ -158,38 +206,56 @@ private suspend fun PointerInputScope.trackChords(state: ChordPadState, signals:
     }
 }
 
-private fun DrawScope.drawKeys(
-    pressedBits: Int,
+/**
+ * Draws the five keys. Shared by the pad and the key-width preview in settings, so the preview
+ * looks exactly like the real keys.
+ *
+ * @param heldBits keys under a finger (white); [chordBits] keys counted in the chord (keys
+ *   released early are drawn half-lit); [glyphFor] the hint drawn in the middle of a key.
+ */
+internal fun DrawScope.drawChordKeys(
+    layout: KeyLayout,
+    heldBits: Int,
+    chordBits: Int,
     colors: PadColors,
     labels: List<TextLayoutResult>?,
-    hints: Map<Int, TextLayoutResult>?,
+    accent: Boolean,
+    glyphFor: (key: Int) -> TextLayoutResult?,
 ) {
-    val keyWidth = size.width / ChordMask.KEY_COUNT
     val gap = 3.dp.toPx()
     val corner = CornerRadius(10.dp.toPx())
-    val stroke = Stroke(width = (if (hints != null) 2.dp else 1.dp).toPx())
-    val keySize = Size(keyWidth - 2 * gap, size.height - 2 * gap)
+    val stroke = Stroke(width = (if (accent) 2.dp else 1.dp).toPx())
+    val height = size.height - 2 * gap
 
     for (key in 0 until ChordMask.KEY_COUNT) {
-        val pressed = pressedBits and ChordMask.bitOf(key) != 0
-        val topLeft = Offset(key * keyWidth + gap, gap)
-        drawRoundRect(if (pressed) colors.keyActive else colors.keyFill, topLeft, keySize, corner)
-        drawRoundRect(if (hints != null) colors.accent else colors.keyBorder, topLeft, keySize, corner, style = stroke)
+        val bit = ChordMask.bitOf(key)
+        val held = heldBits and bit != 0
+        val inChord = chordBits and bit != 0
+        val left = layout.keyStart(key) * size.width + gap
+        val keySize = Size(layout.keyEnd(key) * size.width - gap - left, height)
+        val topLeft = Offset(left, gap)
 
-        val ink = if (pressed) colors.labelActive else colors.label
+        val fill = when {
+            held -> colors.keyActive
+            inChord -> colors.keyActive.copy(alpha = 0.45f)
+            else -> colors.keyFill
+        }
+        drawRoundRect(fill, topLeft, keySize, corner)
+        drawRoundRect(if (accent) colors.accent else colors.keyBorder, topLeft, keySize, corner, style = stroke)
+
         labels?.get(key)?.let { label ->
             val at = Offset(
                 topLeft.x + (keySize.width - label.size.width) / 2,
                 topLeft.y + keySize.height - label.size.height - 10.dp.toPx(),
             )
-            drawText(label, color = ink, topLeft = at)
+            drawText(label, color = if (held) colors.labelActive else colors.label, topLeft = at)
         }
-        hints?.get(key)?.let { hint ->
+        glyphFor(key)?.let { glyph ->
             val at = Offset(
-                topLeft.x + (keySize.width - hint.size.width) / 2,
-                topLeft.y + (keySize.height - hint.size.height) / 2,
+                topLeft.x + (keySize.width - glyph.size.width) / 2,
+                topLeft.y + (keySize.height - glyph.size.height) / 2,
             )
-            drawText(hint, color = if (pressed) colors.labelActive else colors.accent, topLeft = at)
+            drawText(glyph, color = if (accent) colors.accent else colors.text, topLeft = at)
         }
     }
 }

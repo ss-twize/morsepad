@@ -7,12 +7,12 @@ import org.junit.Test
 
 class ChordSequenceDecoderTest {
 
-    private val decoder = ChordSequenceDecoder(TableChordCodec(ChordTables.V1_0))
+    private val decoder = ChordSequenceDecoder(TableChordCodec(ChordTables.V1_1))
     private fun feed(code: String) = decoder.feed(ChordMask.parse(code))
 
     @Test
     fun `basic chord decodes to its letter`() {
-        assertEquals(DecodeResult.Letter('Л', extended = false), feed("10100"))
+        assertEquals(DecodeResult.Symbol('Л', extended = false), feed("10100"))
         assertFalse(decoder.isPrefixPending)
     }
 
@@ -25,30 +25,36 @@ class ChordSequenceDecoderTest {
     @Test
     fun `prefix then 01000 gives Ф`() {
         feed("11111")
-        assertEquals(DecodeResult.Letter('Ф', extended = true), feed("01000"))
+        assertEquals(DecodeResult.Symbol('Ф', extended = true), feed("01000"))
         assertFalse(decoder.isPrefixPending)
     }
 
     @Test
     fun `prefix then 10000 gives Ъ`() {
         feed("11111")
-        assertEquals(DecodeResult.Letter('Ъ', extended = true), feed("10000"))
+        assertEquals(DecodeResult.Symbol('Ъ', extended = true), feed("10000"))
         assertFalse(decoder.isPrefixPending)
+    }
+
+    @Test
+    fun `prefix then 00100 gives a space`() {
+        feed("11111")
+        assertEquals(DecodeResult.Symbol(' ', extended = true), feed("00100"))
     }
 
     @Test
     fun `chord after a completed extension decodes normally again`() {
         feed("11111")
         feed("01000")
-        assertEquals(DecodeResult.Letter('А', extended = false), feed("01000"))
+        assertEquals(DecodeResult.Symbol('А', extended = false), feed("01000"))
     }
 
     @Test
     fun `invalid continuation aborts the prefix without a character`() {
         feed("11111")
-        assertEquals(DecodeResult.PrefixAborted(ChordMask.parse("00100")), feed("00100"))
+        assertEquals(DecodeResult.PrefixAborted(ChordMask.parse("00110")), feed("00110"))
         assertFalse(decoder.isPrefixPending)
-        assertEquals(DecodeResult.Letter('О', extended = false), feed("00100"))
+        assertEquals(DecodeResult.Symbol('О', extended = false), feed("00100"))
     }
 
     @Test
@@ -79,6 +85,6 @@ class ChordSequenceDecoderTest {
     fun `after cancel the next chord decodes as a basic letter`() {
         feed("11111")
         decoder.cancelPrefix()
-        assertEquals(DecodeResult.Letter('А', extended = false), feed("01000"))
+        assertEquals(DecodeResult.Symbol('А', extended = false), feed("01000"))
     }
 }

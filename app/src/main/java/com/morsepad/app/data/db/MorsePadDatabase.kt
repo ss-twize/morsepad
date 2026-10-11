@@ -1,6 +1,7 @@
 package com.morsepad.app.data.db
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -10,7 +11,15 @@ import androidx.room.RoomDatabase
  * the UI thread. The default WAL journal keeps every committed transaction across a crash
  * or force-stop (section 8.2).
  */
-@Database(entities = [NoteEntity::class, SettingsEntity::class], version = 1, exportSchema = true)
+@Database(
+    entities = [NoteEntity::class, SettingsEntity::class],
+    version = 2,
+    exportSchema = true,
+    autoMigrations = [
+        // v2: hint mode and key widths in settings. Notes are untouched.
+        AutoMigration(from = 1, to = 2),
+    ],
+)
 abstract class MorsePadDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun settingsDao(): SettingsDao

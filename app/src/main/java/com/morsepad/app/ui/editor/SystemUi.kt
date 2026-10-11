@@ -3,11 +3,8 @@ package com.morsepad.app.ui.editor
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
-import android.view.HapticFeedbackConstants
-import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -17,7 +14,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.morsepad.app.diagnostics.LatencyTracker
-import com.morsepad.core.session.SessionUpdate
 
 /**
  * Hides status and navigation bars while the input screen is shown (spec 4.1).
@@ -58,20 +54,4 @@ tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
-}
-
-/** Tactile confirmation of input; the cancelled-prefix signal differs from a normal tap. */
-class InputFeedback(private val view: View) {
-    var enabled: Boolean = true
-
-    fun after(update: SessionUpdate) {
-        if (!enabled) return
-        when {
-            update.prefixCancelled -> view.performHapticFeedback(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.REJECT
-                else HapticFeedbackConstants.LONG_PRESS,
-            )
-            update.textChanged || update.prefixPending -> view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        }
-    }
 }

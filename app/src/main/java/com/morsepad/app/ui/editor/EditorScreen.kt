@@ -2,9 +2,9 @@ package com.morsepad.app.ui.editor
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,14 +18,15 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -37,11 +38,11 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morsepad.app.R
 import com.morsepad.app.diagnostics.LatencyTracker
+import com.morsepad.app.input.Haptics
 import com.morsepad.app.input.TouchSignals
 import com.morsepad.app.ui.theme.LocalPadColors
+import com.morsepad.core.codec.ChordCodec
 import com.morsepad.core.codec.ChordMask
-import com.morsepad.core.codec.ChordTables
-import com.morsepad.core.codec.TableChordCodec
 import com.morsepad.core.notes.SaveStatus
 import com.morsepad.core.session.SpecialKey
 import kotlinx.coroutines.delay
@@ -49,27 +50,26 @@ import kotlinx.coroutines.delay
 private const val PREFIX_CANCEL_NOTICE_MILLIS = 1200L
 
 /**
- * Landscape input screen: note text on top, five chord keys in the middle, special keys at
- * the bottom (spec 4.2). Area heights are fixed fractions of the screen, so neither a long
- * note nor status messages ever resize the keys.
+ * Landscape input screen: note text with Done and backspace on top, five chord keys below.
+ * Space, comma and period are chords after the prefix, so the keys get the whole lower part
+ * of the screen. Area heights are fixed fractions, so neither a long note nor status messages
+ * ever resize the keys.
  */
 @Composable
 fun EditorScreen(
     viewModel: NoteViewModel,
     latencyTracker: LatencyTracker,
     touchSignals: TouchSignals,
+    haptics: Haptics,
     onExit: () -> Unit,
 ) {
     val colors = LocalPadColors.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val saveStatus by viewModel.saveStatus.collectAsStateWithLifecycle()
+    SideEffect { haptics.enabled = settings.vibrationEnabled }
 
-    val view = LocalView.current
-    val feedback = remember(view) { InputFeedback(view) }
-    feedback.enabled = settings.vibrationEnabled
-
-    val padState = remember(viewModel, feedback) {
-        ChordPadState().apply { onChord = { chord -> viewModel.onChord(chord)?.let(feedback::after) } }
+    val padState = remember(viewModel, haptics) {
+        ChordPadState().apply { onChord = { chord -> viewModel.onChord(chord)?.let(haptics::after) } }
     }
 
     ImmersiveSystemBars()
@@ -98,6 +98,14 @@ fun EditorScreen(
     }
     BackHandler(onBack = exit)
 
+    var showCancelNotice by remember { mutableStateOf(false) }
+    LaunchedEffect(viewModel.prefixCancelCount) {
+        if (viewModel.prefixCancelCount == 0) return@LaunchedEffect
+        showCancelNotice = true
+        delay(PREFIX_CANCEL_NOTICE_MILLIS)
+        showCancelNotice = false
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -107,111 +115,122 @@ fun EditorScreen(
         // Only text is kept clear of a display cutout; the keys use the full width (spec 4.1),
         // touches next to a camera hole still register.
         Row(Modifier.fillMaxWidth().weight(0.30f).windowInsetsPadding(WindowInsets.displayCutout)) {
-            NoteTextArea(
-                // Lambdas: a new character recomposes only the text area, not this screen.
-                text = { viewModel.text },
-                revision = { viewModel.revision },
-                textSizeSp = settings.textSizeSp,
-                latencyTracker = latencyTracker,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-            AuxPanel(
-                saveStatus = saveStatus,
-                prefixPending = viewModel.prefixPending,
-                prefixCancelCount = viewModel.prefixCancelCount,
-                // Read inside AuxPanel: a finger press recomposes only the hint line.
-                chordHintBits = { if (settings.showChordHint) padState.accumulatedBits else 0 },
-                codeTableVersion = settings.codeTableVersion,
-                onUndo = { time -> viewModel.onSpecialKey(SpecialKey.UNDO, time)?.let(feedback::after) },
-                onDone = { exit() },
-                modifier = Modifier.width(196.dp).fillMaxHeight(),
-            )
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                NoteTextArea(
+                    // Lambdas: a new character recomposes only the text area, not this screen.
+                    text = { viewModel.text },
+                    revision = { viewModel.revision },
+                    textSizeSp = settings.textSizeSp,
+                    latencyTracker = latencyTracker,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HintLine(
+                        // Read inside HintLine: a finger press recomposes only that line.
+                        chordBits = { if (settings.showChordHint) padState.accumulatedBits else 0 },
+                        prefixPending = viewModel.prefixPending,
+                        showCancelNotice = showCancelNotice,
+                        codec = viewModel.codec,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SaveStatusText(saveStatus)
+                }
+            }
+            Column(Modifier.width(200.dp).fillMaxHeight().padding(4.dp)) {
+                PadKey(
+                    stringResource(R.string.editor_done),
+                    { exit() },
+                    Modifier.fillMaxWidth().weight(0.42f).testTag(TAG_KEY_DONE),
+                    fontSize = 17.sp,
+                )
+                PadKey(
+                    "⌫",
+                    { time -> viewModel.onSpecialKey(SpecialKey.BACKSPACE, time)?.let(haptics::after) },
+                    Modifier.fillMaxWidth().weight(0.58f).testTag(TAG_KEY_BACKSPACE),
+                    repeatOnHold = true,
+                    fontSize = 34.sp,
+                )
+            }
         }
         ChordPad(
             state = padState,
             touchSignals = touchSignals,
-            showKeyLabels = settings.showKeyLabels,
+            layout = settings.keyLayout,
+            codec = viewModel.codec,
             prefixPending = viewModel.prefixPending,
-            extensionHints = viewModel.extensionHints,
+            showKeyLabels = settings.showKeyLabels,
+            showLetterHints = settings.showLetterHints,
             // Android honours ~200 dp of gesture exclusion per edge; spend it on the chord keys,
             // where an accidental Back would cancel a multi-finger chord.
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.52f)
+                .weight(0.70f)
                 .systemGestureExclusion(),
-        )
-        SpecialKeysRow(
-            onKey = { key, time -> viewModel.onSpecialKey(key, time)?.let(feedback::after) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.18f),
         )
     }
 }
 
-/** Compact auxiliary panel: undo, done, save status and chord/prefix hints. */
+/** Code and result of the chord being pressed, or the prefix state. */
 @Composable
-private fun AuxPanel(
-    saveStatus: SaveStatus,
+private fun HintLine(
+    chordBits: () -> Int,
     prefixPending: Boolean,
-    prefixCancelCount: Int,
-    chordHintBits: () -> Int,
-    codeTableVersion: String,
-    onUndo: (Long) -> Unit,
-    onDone: () -> Unit,
+    showCancelNotice: Boolean,
+    codec: ChordCodec,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalPadColors.current
-    var showCancelNotice by remember { mutableStateOf(false) }
-    LaunchedEffect(prefixCancelCount) {
-        if (prefixCancelCount == 0) return@LaunchedEffect
-        showCancelNotice = true
-        delay(PREFIX_CANCEL_NOTICE_MILLIS)
-        showCancelNotice = false
-    }
-    val codec = remember(codeTableVersion) { TableChordCodec(ChordTables.byVersion(codeTableVersion) ?: ChordTables.default) }
-
-    Column(modifier.padding(4.dp), verticalArrangement = Arrangement.SpaceBetween) {
-        Row(Modifier.fillMaxWidth().height(52.dp)) {
-            PadKey("↶", onUndo, Modifier.weight(1f).fillMaxHeight().testTag(TAG_KEY_UNDO), fontSize = 24.sp)
-            PadKey(stringResource(R.string.editor_done), { onDone() }, Modifier.weight(1.6f).fillMaxHeight().testTag(TAG_KEY_DONE), fontSize = 16.sp)
-        }
-        HintLine(chordHintBits, prefixPending, showCancelNotice, codec)
-        Text(
-            text = when (saveStatus) {
-                SaveStatus.Idle -> ""
-                SaveStatus.Saved -> stringResource(R.string.save_saved)
-                SaveStatus.Pending, SaveStatus.Saving -> stringResource(R.string.save_saving)
-                is SaveStatus.Failed -> stringResource(R.string.save_failed)
-            },
-            color = if (saveStatus is SaveStatus.Failed) colors.warning else colors.textSecondary,
-            fontSize = 12.sp,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-        )
-    }
-}
-
-/** Isolated so that finger presses (which change [chordHintBits]) recompose only this line. */
-@Composable
-private fun HintLine(chordHintBits: () -> Int, prefixPending: Boolean, showCancelNotice: Boolean, codec: TableChordCodec) {
-    val colors = LocalPadColors.current
-    val bits = chordHintBits()
+    val bits = chordBits()
     val (line, color) = when {
         showCancelNotice -> stringResource(R.string.editor_prefix_cancelled) to colors.warning
-        prefixPending -> stringResource(R.string.editor_prefix_pending) to colors.accent
         bits != 0 -> {
             val mask = ChordMask(bits)
-            val letter = codec.decode(mask)?.toString() ?: if (codec.isPrefix(mask)) "Ф/Ъ…" else "—"
-            "${mask.toCode()} → $letter" to colors.text
+            val result = when {
+                prefixPending -> codec.decodeExtension(mask)?.let { describe(it) } ?: "—"
+                codec.isPrefix(mask) -> stringResource(R.string.editor_prefix)
+                else -> codec.decode(mask)?.let { describe(it) } ?: "—"
+            }
+            "${mask.toCode()} → $result" to if (prefixPending) colors.accent else colors.text
         }
+        prefixPending -> stringResource(R.string.editor_prefix_pending) to colors.accent
         else -> "" to colors.textSecondary
     }
-    Text(line, color = color, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp).testTag(TAG_HINT))
+    Text(
+        line,
+        color = color,
+        fontSize = 14.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.testTag(TAG_HINT),
+    )
+}
+
+@Composable
+private fun describe(char: Char): String = when (char) {
+    ' ' -> stringResource(R.string.symbol_space)
+    ',' -> stringResource(R.string.symbol_comma)
+    '.' -> stringResource(R.string.symbol_period)
+    else -> char.toString()
+}
+
+@Composable
+private fun SaveStatusText(status: SaveStatus) {
+    val colors = LocalPadColors.current
+    Spacer(Modifier.width(8.dp))
+    Text(
+        text = when (status) {
+            SaveStatus.Idle -> ""
+            SaveStatus.Saved -> stringResource(R.string.save_saved)
+            SaveStatus.Pending, SaveStatus.Saving -> stringResource(R.string.save_saving)
+            is SaveStatus.Failed -> stringResource(R.string.save_failed)
+        },
+        color = if (status is SaveStatus.Failed) colors.warning else colors.textSecondary,
+        fontSize = 12.sp,
+        maxLines = 1,
+    )
 }
 
 const val TAG_EDITOR_READY = "editor_ready"
 const val TAG_EDITOR_LOADING = "editor_loading"
-const val TAG_KEY_UNDO = "key_undo"
 const val TAG_KEY_DONE = "key_done"
 const val TAG_HINT = "chord_hint"

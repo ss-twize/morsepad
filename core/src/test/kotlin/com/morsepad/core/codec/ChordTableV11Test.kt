@@ -7,11 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Conformance of the shipped table with section 6 of the specification (encoding v1.0).
+ * Conformance of the shipped table v1.1: the letters and Ф/Ъ of section 6 of the specification
+ * (encoding v1.0) plus space, comma and period typed after the prefix (change request 2).
  * The expected values are copied from the spec on purpose: the test is the oracle,
  * the production table is the thing under test.
  */
-class ChordTableV1Test {
+class ChordTableV11Test {
 
     private val specLetters = mapOf(
         'О' to "00100", 'П' to "01001",
@@ -31,12 +32,13 @@ class ChordTableV1Test {
         'Щ' to "11011", 'Э' to "11101",
     )
 
-    private val table = ChordTables.V1_0
+    private val table = ChordTables.V1_1
     private val codec: ChordCodec = TableChordCodec(table)
 
     @Test
-    fun `table version is 1_0`() {
-        assertEquals("1.0", table.version)
+    fun `table version is 1_1 and it is the default`() {
+        assertEquals("1.1", table.version)
+        assertEquals(table, ChordTables.default)
     }
 
     @Test
@@ -90,7 +92,14 @@ class ChordTableV1Test {
     fun `extended sequences produce Ф and Ъ`() {
         assertEquals('Ф', codec.decodeExtension(ChordMask.parse("01000")))
         assertEquals('Ъ', codec.decodeExtension(ChordMask.parse("10000")))
-        assertEquals(2, table.extensions.size)
+    }
+
+    @Test
+    fun `prefix sequences type space comma and period`() {
+        assertEquals(' ', codec.decodeExtension(ChordMask.parse("00100")))
+        assertEquals(',', codec.decodeExtension(ChordMask.parse("00010")))
+        assertEquals('.', codec.decodeExtension(ChordMask.parse("00001")))
+        assertEquals(5, table.extensions.size)
     }
 
     @Test
@@ -108,13 +117,17 @@ class ChordTableV1Test {
     }
 
     @Test
-    fun `space comma and period are not part of the five bit table`() {
-        listOf(' ', ',', '.').forEach { assertTrue(codec.encode(it).isEmpty()) }
+    fun `space comma and period are never single chords`() {
+        val prefix = ChordMask.parse("11111")
+        assertEquals(listOf(prefix, ChordMask.parse("00100")), codec.encode(' '))
+        assertEquals(listOf(prefix, ChordMask.parse("00010")), codec.encode(','))
+        assertEquals(listOf(prefix, ChordMask.parse("00001")), codec.encode('.'))
+        ChordMask.allNonEmpty.forEach { assertTrue(codec.decode(it) !in listOf(' ', ',', '.')) }
     }
 
     @Test
     fun `table is reachable by its version`() {
-        assertEquals(table, ChordTables.byVersion("1.0"))
+        assertEquals(table, ChordTables.byVersion("1.1"))
         assertNull(ChordTables.byVersion("9.9"))
     }
 }

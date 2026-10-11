@@ -19,6 +19,9 @@ class TextEditor(initialText: String = "", private val undoLimit: Int = DEFAULT_
 
         /** [removed] was cut from the end; undo appends it back. */
         class Deleted(val removed: String) : Edit
+
+        /** [removed] was cut from the end and [insertedLength] characters appended in one step. */
+        class Replaced(val removed: String, val insertedLength: Int) : Edit
     }
 
     private val buffer = StringBuilder(initialText)
@@ -47,11 +50,21 @@ class TextEditor(initialText: String = "", private val undoLimit: Int = DEFAULT_
         insert(if (capitalizeNext) letter.uppercaseChar() else letter.lowercaseChar())
     }
 
-    fun insertSpace() = insert(' ')
+    /**
+     * Inserts a space, unless the text already ends with the automatic space of a period or
+     * comma — then it does nothing (no double spaces). Returns whether the text changed.
+     */
+    fun insertSpace(): Boolean {
+        if (endsWithAutomaticSpace()) return false
+        insert(' ')
+        return true
+    }
 
-    fun insertComma() = insert(',')
+    /** Inserts ", " (see [insertPunctuation]). */
+    fun insertComma() = insertPunctuation(',')
 
-    fun insertPeriod() = insert(SENTENCE_END)
+    /** Inserts ". " (see [insertPunctuation]). */
+    fun insertPeriod() = insertPunctuation(SENTENCE_END)
 
     /** Deletes the last character (a surrogate pair counts as one). Returns false on empty text. */
     fun deleteLast(): Boolean {
@@ -71,6 +84,10 @@ class TextEditor(initialText: String = "", private val undoLimit: Int = DEFAULT_
         when (edit) {
             is Edit.Inserted -> buffer.setLength(buffer.length - edit.length)
             is Edit.Deleted -> buffer.append(edit.removed)
+            is Edit.Replaced -> {
+                buffer.setLength(buffer.length - edit.insertedLength)
+                buffer.append(edit.removed)
+            }
         }
         changed()
         return true
@@ -90,6 +107,25 @@ class TextEditor(initialText: String = "", private val undoLimit: Int = DEFAULT_
         changed()
     }
 
+    /**
+     * Appends [mark] followed by an automatic space, as one undoable step. A space right before
+     * the mark is replaced by it ("да ," → "да, "), which also turns repeated periods into an
+     * ellipsis ("да. " + "." → "да.. ").
+     */
+    private fun insertPunctuation(mark: Char) {
+        val end = buffer.length
+        val replacesSpace = end > 0 && buffer[end - 1] == ' '
+        if (replacesSpace) buffer.setLength(end - 1)
+        buffer.append(mark).append(' ')
+        record(if (replacesSpace) SPACE_REPLACED_BY_PUNCTUATION else PUNCTUATION_INSERT)
+        changed()
+    }
+
+    private fun endsWithAutomaticSpace(): Boolean {
+        val end = buffer.length
+        return end >= 2 && buffer[end - 1] == ' ' && (buffer[end - 2] == SENTENCE_END || buffer[end - 2] == ',')
+    }
+
     private fun record(edit: Edit) {
         if (undoLimit <= 0) return
         if (history.size == undoLimit) history.removeFirst()
@@ -105,5 +141,7 @@ class TextEditor(initialText: String = "", private val undoLimit: Int = DEFAULT_
         const val DEFAULT_UNDO_LIMIT = 500
         const val SENTENCE_END = '.'
         val SINGLE_CHAR_INSERT = Edit.Inserted(1)
+        val PUNCTUATION_INSERT = Edit.Inserted(2)
+        val SPACE_REPLACED_BY_PUNCTUATION = Edit.Replaced(removed = " ", insertedLength = 2)
     }
 }

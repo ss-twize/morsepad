@@ -37,7 +37,7 @@ class TextEditorTest {
     fun `first letter after a period is uppercase`() {
         type("да.нет")
 
-        assertEquals("Да.Нет", editor.text)
+        assertEquals("Да. Нет", editor.text)
     }
 
     @Test
@@ -69,20 +69,83 @@ class TextEditorTest {
     }
 
     @Test
-    fun `space comma and period insert exactly one character each`() {
-        editor.insertSpace()
-        editor.insertComma()
-        editor.insertPeriod()
+    fun `period is followed by an automatic space`() {
+        type("да.")
 
-        assertEquals(" ,.", editor.text)
+        assertEquals("Да. ", editor.text)
+    }
+
+    @Test
+    fun `comma is followed by an automatic space`() {
+        type("да,")
+
+        assertEquals("Да, ", editor.text)
+    }
+
+    @Test
+    fun `space right after punctuation is not doubled`() {
+        type("да,")
+        val revision = editor.revision
+
+        editor.insertSpace()
+
+        assertEquals("Да, ", editor.text)
+        assertEquals(revision, editor.revision)
+    }
+
+    @Test
+    fun `punctuation takes the place of a space typed before it`() {
+        type("да ")
+        editor.insertComma()
+
+        assertEquals("Да, ", editor.text)
+    }
+
+    @Test
+    fun `repeated periods make an ellipsis`() {
+        type("да...")
+
+        assertEquals("Да... ", editor.text)
+    }
+
+    @Test
+    fun `ordinary spaces are not swallowed`() {
+        type("а  б")
+
+        assertEquals("А  б", editor.text)
+    }
+
+    @Test
+    fun `backspace after punctuation removes the automatic space first`() {
+        type("да.")
+        editor.deleteLast()
+
+        assertEquals("Да.", editor.text)
+    }
+
+    @Test
+    fun `undo removes punctuation together with its space`() {
+        type("да.")
+        editor.undo()
+
+        assertEquals("Да", editor.text)
+    }
+
+    @Test
+    fun `undo of punctuation brings back the space it replaced`() {
+        type("да ")
+        editor.insertComma()
+        editor.undo()
+
+        assertEquals("Да ", editor.text)
     }
 
     @Test
     fun `delete removes letters spaces and punctuation alike`() {
-        type("да, ок.")
+        type("да, ок.") // "Да, ок. "
         repeat(4) { assertTrue(editor.deleteLast()) }
 
-        assertEquals("Да,", editor.text)
+        assertEquals("Да, ", editor.text)
     }
 
     @Test
@@ -152,7 +215,7 @@ class TextEditorTest {
         editor.deleteLast()
         assertTrue(editor.undo())
 
-        assertEquals("Ок.", editor.text)
+        assertEquals("Ок. ", editor.text)
     }
 
     @Test

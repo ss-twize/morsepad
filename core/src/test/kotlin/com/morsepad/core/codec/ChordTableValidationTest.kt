@@ -74,6 +74,20 @@ class ChordTableValidationTest {
     }
 
     @Test
+    fun `extensions may type space comma and period`() {
+        val problems = ChordTableValidator.validate(
+            definition(extensions = listOf('Ф' to "01000", ' ' to "00100", ',' to "00010", '.' to "00001")),
+        )
+        assertEquals(emptyList<TableProblem>(), problems)
+    }
+
+    @Test
+    fun `extensions reject other symbols`() {
+        val problems = ChordTableValidator.validate(definition(extensions = listOf('!' to "00100")))
+        assertTrue(problems.contains(TableProblem.UnsupportedSymbol('!')))
+    }
+
+    @Test
     fun `duplicate extension code is reported`() {
         val problems = ChordTableValidator.validate(definition(extensions = listOf('Ф' to "01000", 'Ъ' to "01000")))
         assertTrue(problems.contains(TableProblem.DuplicateCode(ChordMask.parse("01000"), listOf('Ф', 'Ъ'))))

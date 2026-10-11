@@ -14,6 +14,7 @@ import com.morsepad.app.ui.editor.TAG_CHORD_PAD
 import com.morsepad.app.ui.editor.TAG_EDITOR_READY
 import com.morsepad.app.ui.editor.TAG_NOTE_TEXT
 import com.morsepad.core.codec.ChordMask
+import com.morsepad.core.settings.AppSettings
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
@@ -26,6 +27,8 @@ fun resetAppData() = runBlocking {
     container.writeBarrier.awaitIdle()
     container.noteRepository.observeNotes().first().forEach { container.noteRepository.delete(it.id) }
     container.settingsRepository.setOpenNoteId(null)
+    // Default settings: tests compute key positions for equal key widths.
+    container.settingsRepository.update { AppSettings() }
     container.latencyTracker.clear()
 }
 
